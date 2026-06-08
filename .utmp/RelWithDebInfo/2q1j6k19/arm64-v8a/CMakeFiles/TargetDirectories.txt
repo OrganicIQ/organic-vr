@@ -1,0 +1,5 @@
+C:/Users/admin/Meta XR Kiosk/.utmp/RelWithDebInfo/2q1j6k19/arm64-v8a/CMakeFiles/edit_cache.dir
+C:/Users/admin/Meta XR Kiosk/.utmp/RelWithDebInfo/2q1j6k19/arm64-v8a/CMakeFiles/rebuild_cache.dir
+C:/Users/admin/Meta XR Kiosk/.utmp/RelWithDebInfo/2q1j6k19/arm64-v8a/GameActivity/CMakeFiles/game.dir
+C:/Users/admin/Meta XR Kiosk/.utmp/RelWithDebInfo/2q1j6k19/arm64-v8a/GameActivity/CMakeFiles/edit_cache.dir
+C:/Users/admin/Meta XR Kiosk/.utmp/RelWithDebInfo/2q1j6k19/arm64-v8a/GameActivity/CMakeFiles/rebuild_cache.dir
