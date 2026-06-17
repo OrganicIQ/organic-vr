@@ -1,0 +1,345 @@
+# Organic IQ VR Kiosk — Setup & Operation Guide
+
+A complete, step-by-step guide to install and run the **Organic IQ VR Kiosk** app on a Meta Quest 2 headset, add/adjust videos, and operate it at an exhibition.
+
+- **App package name:** `com.organiciq.kiosk`
+- **Video folder on headset:** `/storage/emulated/0/GeniMindsXR`
+- **Supported video files:** `.mp4`, `.mov`, `.mkv`, `.mp`
+- **Headset:** Meta Quest 2 (also works on Quest 3 / 3S / Pro)
+
+---
+
+## Table of Contents
+0. [Quick Start — How to Install the App](#0-quick-start--how-to-install-the-app)
+1. [What You Need](#1-what-you-need)
+2. [One-Time PC Setup (install ADB)](#2-one-time-pc-setup-install-adb)
+3. [Prepare the Headset (Developer Mode)](#3-prepare-the-headset-developer-mode)
+4. [Connect the Headset to the PC](#4-connect-the-headset-to-the-pc)
+5. [Install (Sideload) the APK](#5-install-sideload-the-apk)
+6. [Grant Storage Permission](#6-grant-storage-permission-required-once)
+7. [Add Your Videos](#7-add-your-videos)
+8. [Video Filename Conventions](#8-video-filename-conventions-important)
+9. [Adjusting the Video Front Direction](#9-adjusting-the-video-front-direction)
+10. [Running the Kiosk](#10-running-the-kiosk-at-the-exhibition)
+11. [Operator Controls](#11-operator-controls)
+12. [Troubleshooting (Screen Colours)](#12-troubleshooting--screen-colour-meanings)
+13. [Quick Command Reference](#13-quick-command-reference)
+
+---
+
+## 0. Quick Start — How to Install the App
+
+You have been given the app file **`kiosk.apk`**. There are **two ways** to install it onto the Meta Quest headset. Pick whichever suits you — **Option A** needs no extra software; **Option B** has a simple click-based interface.
+
+> **Before you start (both options), do this once per headset:**
+> 1. Install the **Meta Horizon** app on your phone, sign in with the same account as the headset.
+> 2. In the phone app: **Menu → Devices → (your headset) → Headset Settings → Developer Mode → ON**.
+>    *(If you don't see Developer Mode, create a free developer account at https://developer.meta.com first — just accept the terms, no payment.)*
+> 3. **Restart the headset.**
+
+### Option A — Install with ADB (recommended, no extra software)
+
+1. **Install Platform Tools (one time):** download from
+   https://developer.android.com/tools/releases/platform-tools
+   and unzip to a simple folder such as `C:\platform-tools`.
+2. **Connect** the headset to the PC with the USB-C cable. **Put the headset on** and tap **Allow** on the *"Allow USB debugging?"* popup (tick *"Always allow from this computer"*).
+3. **Open a command window** inside the `platform-tools` folder: open the folder, type `cmd` in the address bar, press **Enter**.
+4. **Run these three commands** (replace the path with where your `kiosk.apk` actually is):
+
+```
+adb devices
+adb install -r "D:\kiosk.apk"
+adb shell appops set com.organiciq.kiosk MANAGE_EXTERNAL_STORAGE allow
+```
+
+   - First command should list your headset. If it says `unauthorized`, tap **Allow** in the headset.
+   - Second command installs the app — wait for **`Success`**.
+   - Third command grants permission to read the videos folder. **Do not skip it** — without it the app shows a yellow screen.
+
+5. **Done.** Find the app in the headset's **App Library → filter "Unknown Sources"**.
+
+*(Steps 2–6 below explain each of these in more detail if needed.)*
+
+### Option B — Install with SideQuest (easier, click-based)
+
+1. Install **SideQuest** (Advanced Installer) on the PC: https://sidequestvr.com
+2. Connect the headset by USB and tap **Allow** on the debugging popup (Developer Mode must be ON — see above).
+3. In SideQuest, click the **"Install APK file from folder"** icon (a box with a down-arrow, top-right) and select **`kiosk.apk`**. Wait for it to finish.
+4. **Grant storage permission** — SideQuest does *not* do this automatically. Click SideQuest's **"Run ADB command"** option (or use the ADB window from Option A) and run:
+   ```
+   adb shell appops set com.organiciq.kiosk MANAGE_EXTERNAL_STORAGE allow
+   ```
+5. **Done.** The app appears in **App Library → "Unknown Sources"**.
+
+> **Updating later:** to install a newer version, repeat the same install step with the new `kiosk.apk`. Your videos and the storage permission stay in place.
+
+---
+
+## 1. What You Need
+
+- A **Windows PC** (or Mac).
+- The **Meta Quest 2** headset + its **USB-C cable**.
+- The app file: **`kiosk.apk`** (provided to you).
+- A free **Meta developer account** (needed once to enable Developer Mode — instructions below).
+- Your **360° video files**.
+
+---
+
+## 2. One-Time PC Setup (install ADB)
+
+**ADB** ("Android Debug Bridge") is the tool that lets your PC talk to the headset. You install it once.
+
+1. Download the **Android SDK Platform Tools** from Google:
+   https://developer.android.com/tools/releases/platform-tools
+2. Unzip it to a simple folder, e.g. `C:\platform-tools`.
+3. Open that folder. You should see `adb.exe` inside it.
+
+> **Tip:** The easiest way to run commands is to open the `platform-tools` folder, type `cmd` in the address bar, and press Enter. This opens a command window already in the right place, so `adb` commands work immediately.
+
+To confirm it works, type:
+```
+adb version
+```
+You should see a version number printed.
+
+---
+
+## 3. Prepare the Headset (Developer Mode)
+
+Developer Mode must be ON to sideload apps. This is a one-time setup per headset.
+
+1. Install the **Meta Horizon** app on your phone and sign in with the same account as the headset.
+2. In the phone app: **Menu → Devices → (select your headset) → Headset Settings → Developer Mode → turn ON.**
+   - If you don't see Developer Mode, you must first create a free developer account at https://developer.meta.com (just accept the terms — no payment).
+3. **Restart the headset** after enabling Developer Mode (hold power → Restart).
+
+---
+
+## 4. Connect the Headset to the PC
+
+1. Plug the headset into the PC with the **USB-C cable**.
+2. **Put the headset on.** You will see a popup: **"Allow USB debugging?"** — check **"Always allow from this computer"** and tap **Allow**.
+   - If you miss it, unplug and replug the cable to make it appear again.
+3. On the PC, confirm the headset is detected:
+```
+adb devices
+```
+   You should see something like:
+```
+List of devices attached
+1WMHHA626U2435    device
+```
+   - If it says **`unauthorized`**, put the headset on and tap **Allow** on the debugging popup.
+   - If **nothing** is listed, try a different USB cable/port (some cables are charge-only).
+
+---
+
+## 5. Install (Sideload) the APK
+
+With the headset connected and detected:
+
+```
+adb install -r "C:\path\to\kiosk.apk"
+```
+(Replace `C:\path\to\kiosk.apk` with the actual location of the file.)
+
+- The `-r` means "reinstall / replace" — use it for both first installs and updates.
+- Wait for it to print **`Success`**.
+
+> **Updating the app later?** Use the exact same command with the new APK. Your videos in the `GeniMindsXR` folder are **not** deleted by an app update.
+
+To find the app on the headset: in the headset's App Library, change the filter (top-right) from "All" to **"Unknown Sources"** — the kiosk app appears there.
+
+---
+
+## 6. Grant Storage Permission (required once)
+
+The app reads videos from a folder on the headset, which needs **All Files Access**. Grant it from the PC:
+
+```
+adb shell appops set com.organiciq.kiosk MANAGE_EXTERNAL_STORAGE allow
+```
+
+That's it — this is remembered until the app is uninstalled.
+
+> If you ever uninstall and reinstall the app, run this command again.
+
+---
+
+## 7. Add Your Videos
+
+The app plays every supported video it finds in this folder on the headset:
+```
+/storage/emulated/0/GeniMindsXR
+```
+
+**Create the folder (first time only):**
+```
+adb shell mkdir -p /storage/emulated/0/GeniMindsXR
+```
+
+**Copy a video into it:**
+```
+adb push "C:\path\to\my_video.mp4" /storage/emulated/0/GeniMindsXR/
+```
+
+**Copy several videos** by repeating the `push` command for each file, or push a whole folder:
+```
+adb push "C:\path\to\videos_folder\." /storage/emulated/0/GeniMindsXR/
+```
+
+**Check what's currently on the headset:**
+```
+adb shell ls /storage/emulated/0/GeniMindsXR
+```
+
+**Delete a video from the headset:**
+```
+adb shell rm "/storage/emulated/0/GeniMindsXR/old_video.mp4"
+```
+
+> **Play order:** Videos play in **alphabetical order** of filename, then loop back to the first. To control the order, name them `01_intro.mp4`, `02_forest.mp4`, etc.
+
+---
+
+## 8. Video Filename Conventions (IMPORTANT)
+
+The app decides how to display each video **from its filename**. Add the right tag to the name (before the `.mp4`).
+
+| If your video is… | Add this tag to the filename | Example |
+|---|---|---|
+| Normal flat 360° (mono) | *(no tag needed)* | `forest.mp4` |
+| Over/Under 3D (top half = image) | `_OU` or `_3dv` | `whale_OU.mp4` |
+| YouTube-style over/under cubemap | `_ytcubemap` | `city_ytcubemap.mp4` |
+| Front direction needs adjusting | `_yaw<number>` | `forest_yaw30.mp4` |
+
+- Tags can be **combined**: `whale_OU_yaw-20.mp4`.
+- Tags are **not case-sensitive**.
+- Supported extensions: **`.mp4`, `.mov`, `.mkv`, `.mp`**.
+
+---
+
+## 9. Adjusting the Video Front Direction
+
+When a video starts, its "front" (the main part of the scene) should face the viewer. Some 360° videos are filmed with their front off to one side. You fix this **per video, just by renaming the file** — no app rebuild needed.
+
+**How to fix a video whose front is off:**
+
+1. Watch the video in the headset, facing your normal forward direction.
+2. Note **which way** the front is off and **roughly how many degrees**.
+3. Rename the file to add `_yaw<number>`:
+
+| The video's front is… | Use a… | Example |
+|---|---|---|
+| off to your **LEFT** | **positive** number | `forest_yaw30.mp4` |
+| off to your **RIGHT** | **negative** number | `forest_yaw-30.mp4` |
+| already correct | *(no tag)* | `forest.mp4` |
+
+4. Push the renamed file back to the headset (delete the old name first if needed):
+```
+adb shell rm "/storage/emulated/0/GeniMindsXR/forest.mp4"
+adb push "C:\videos\forest_yaw30.mp4" /storage/emulated/0/GeniMindsXR/
+```
+5. Restart the app and check. Fine-tune the number by ±5–10° and repeat until the front faces you.
+
+> Decimals are allowed: `forest_yaw12.5.mp4`. If your first guess pushes it the wrong way, just **flip the sign** (e.g. `30` → `-30`).
+
+---
+
+## 10. Running the Kiosk (at the exhibition)
+
+The app is **fully automatic**:
+
+- **Launch it once** from the headset's App Library (Unknown Sources filter).
+- It plays an intro, then plays every video in the folder **back-to-back, looping forever**.
+- When a visitor **takes the headset off and the next person puts it on**, it keeps running — no need to touch anything.
+
+**Power tips for an all-day booth:**
+- Keep the headset **plugged into power** during the event (a USB-C cable to a power bank or wall adapter).
+- Make sure the **headset is fully charged** at the start of the day.
+
+---
+
+## 11. Operator Controls
+
+| Action | How |
+|---|---|
+| **Restart the loop from the beginning** | Pick up a controller and **hold any button** (trigger / grip / A / B / X / Y) for **5 seconds**. *(The hold prevents accidental restarts. Note: there is no laser pointer inside the app — that is normal; the buttons still work.)* |
+| **Close / exit the app to the desktop** | Press and **hold the Meta/Oculus button** on the right controller (or hold the headset's **power button**) to bring up the system menu, then exit to Home. |
+
+> Visitors do **not** hold a controller, so they cannot accidentally restart anything.
+
+---
+
+## 12. Troubleshooting — Screen Colour Meanings
+
+If the headset shows a **solid colour** instead of video, it's telling you what's wrong:
+
+| Colour | Meaning | Fix |
+|---|---|---|
+| 🟡 **Yellow** | Video folder can't be reached | Run the permission command in [Step 6](#6-grant-storage-permission-required-once). Confirm the folder path is exactly `/storage/emulated/0/GeniMindsXR`. |
+| 🟣 **Magenta / Purple** | Folder is fine, but **no playable videos** inside | Check videos are actually in the folder ([Step 7](#7-add-your-videos)) and use a supported extension. |
+| 🔵 **Cyan** | Error reading the folder | Re-grant permission ([Step 6](#6-grant-storage-permission-required-once)); reconnect and check the folder. |
+| 🔵 **Blue** | A specific video file failed to play | That file is corrupt or an unsupported codec. Re-export it as standard **H.264 MP4** and replace it. |
+| ⚫ **Black** | Trial period expired | Contact Organic IQ for an updated build. |
+
+**Other common issues:**
+
+- **App not visible in the headset:** In the App Library, set the filter (top-right) to **"Unknown Sources."**
+- **`adb` not recognised:** Open the command window *inside* the `platform-tools` folder (see [Step 2](#2-one-time-pc-setup-install-adb)).
+- **Headset shows `unauthorized`:** Put the headset on and tap **Allow** on the USB debugging popup.
+- **Controllers seem dead inside the app:** There is **no laser pointer** inside the app — that's normal. Buttons still work (try the 5-second hold). If a controller is truly unresponsive, **replace its AA battery** and hold the Meta button to reconnect.
+- **Video looks mirrored / front in the wrong place:** Use the filename tags in [Step 8](#8-video-filename-conventions-important) and [Step 9](#9-adjusting-the-video-front-direction).
+
+---
+
+## 13. Quick Command Reference
+
+```bash
+# Check headset is connected
+adb devices
+
+# Install or update the app
+adb install -r "C:\path\to\kiosk.apk"
+
+# Grant storage permission (once after each install)
+adb shell appops set com.organiciq.kiosk MANAGE_EXTERNAL_STORAGE allow
+
+# Create the video folder (first time)
+adb shell mkdir -p /storage/emulated/0/GeniMindsXR
+
+# Add a video
+adb push "C:\path\to\video.mp4" /storage/emulated/0/GeniMindsXR/
+
+# List videos on the headset
+adb shell ls /storage/emulated/0/GeniMindsXR
+
+# Delete a video
+adb shell rm "/storage/emulated/0/GeniMindsXR/video.mp4"
+
+# Launch the app from the PC (optional)
+adb shell monkey -p com.organiciq.kiosk -c android.intent.category.LAUNCHER 1
+
+# Force-close the app to desktop (optional)
+adb shell am force-stop com.organiciq.kiosk
+```
+
+---
+
+### Filename cheat-sheet
+
+```
+forest.mp4                 → normal 360° video
+whale_OU.mp4               → over/under 3D video
+city_ytcubemap.mp4         → YouTube over/under cubemap
+forest_yaw30.mp4           → rotate front 30° (front was to the LEFT)
+forest_yaw-30.mp4          → rotate front -30° (front was to the RIGHT)
+whale_OU_yaw-20.mp4        → 3D video + front rotated -20°
+01_intro.mp4, 02_next.mp4  → control play order (alphabetical)
+```
+
+---
+
+*Organic IQ VR Kiosk — for support, contact Organic IQ.*
+</content>
+</invoke>

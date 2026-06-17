@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Storage permissions for reading kiosk videos from /storage/emulated/0/GeniMindsXR -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+    <!-- All Files Access (Android 11+ / targetSdk 30+ scoped storage) — required to read a top-level
+         folder on Quest. Must ALSO be granted once on the headset (in-app toggle, system screen, or adb). -->
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
+                     tools:ignore="ScopedStorage" />
+
+    <application>
+        <!-- Focus-aware so the app keeps running while system overlays/popups appear. -->
+        <meta-data android:name="com.oculus.vr.focusaware" android:value="true" />
+        <!-- Application Entry is set to GameActivity, so we keep ONLY the GameActivity block.
+             (The plain UnityPlayerActivity block from the template was removed.) -->
+        <activity android:name="com.unity3d.player.UnityPlayerGameActivity"
+                  android:theme="@style/BaseUnityGameActivityTheme">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <meta-data android:name="unityplayer.UnityActivity" android:value="true" />
+            <meta-data android:name="android.app.lib_name" android:value="game" />
+        </activity>
+    </application>
+</manifest>
