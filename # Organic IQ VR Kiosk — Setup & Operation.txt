@@ -4,7 +4,7 @@ A complete, step-by-step guide to install and run the **Organic IQ VR Kiosk** ap
 
 - **App package name:** `com.organiciq.kiosk`
 - **Video folder on headset:** `/storage/emulated/0/GeniMindsXR`
-- **Supported video files:** `.mp4`, `.mov`, `.mkv`, `.mp`
+- **Supported video files:** `.mp4`, `.mov`, `.mkv`, `.webm`, `.mp`
 - **Headset:** Meta Quest 2 (also works on Quest 3 / 3S / Pro)
 
 ---
@@ -204,18 +204,22 @@ adb shell rm "/storage/emulated/0/GeniMindsXR/old_video.mp4"
 
 ## 8. Video Filename Conventions (IMPORTANT)
 
-The app decides how to display each video **from its filename**. Add the right tag to the name (before the `.mp4`).
+The app decides how to display each video **from its filename**. Add the right tag to the name before the file extension.
 
 | If your video is… | Add this tag to the filename | Example |
 |---|---|---|
-| Normal flat 360° (mono) | *(no tag needed)* | `forest.mp4` |
-| Over/Under 3D (top half = image) | `_OU` or `_3dv` | `whale_OU.mp4` |
-| YouTube-style over/under cubemap | `_ytcubemap` | `city_ytcubemap.mp4` |
-| Front direction needs adjusting | `_yaw<number>` | `forest_yaw30.mp4` |
+| Normal mono 360° equirectangular | `__mono360` *(or no tag)* | `forest__mono360.mp4` |
+| Over/Under 3D 360° | `__ou360` | `whale__ou360.mp4` |
+| Side-by-side 3D 360° | `__sbs360` | `reef__sbs360.mp4` |
+| YouTube EAC / cubemap atlas | `__cubemap` or `__eac` | `city__cubemap.mp4` |
+| Legacy top-half 360 file | `__ytcubemap` | `city__ytcubemap.mp4` |
+| Normal flat 2D video | `__flat` | `intro__flat.mp4` |
+| Front direction needs adjusting | `_yaw<number>` | `forest__mono360_yaw30.mp4` |
 
-- Tags can be **combined**: `whale_OU_yaw-20.mp4`.
+- Tags can be **combined**: `whale__ou360_yaw-20.mp4`.
 - Tags are **not case-sensitive**.
-- Supported extensions: **`.mp4`, `.mov`, `.mkv`, `.mp`**.
+- Older tags still work: `_OU`, `_3dv`, `_ytcubemap`, `_ytcube`, and `_eac`.
+- Supported extensions: **`.mp4`, `.mov`, `.mkv`, `.webm`, `.mp`**.
 
 ---
 
@@ -329,12 +333,14 @@ adb shell am force-stop com.organiciq.kiosk
 ### Filename cheat-sheet
 
 ```
-forest.mp4                 → normal 360° video
-whale_OU.mp4               → over/under 3D video
-city_ytcubemap.mp4         → YouTube over/under cubemap
-forest_yaw30.mp4           → rotate front 30° (front was to the LEFT)
-forest_yaw-30.mp4          → rotate front -30° (front was to the RIGHT)
-whale_OU_yaw-20.mp4        → 3D video + front rotated -20°
+forest__mono360.mp4        → normal mono 360° video
+whale__ou360.mp4           → over/under 3D 360° video
+reef__sbs360.mp4           → side-by-side 3D 360° video
+city__cubemap.mp4          → YouTube EAC / cubemap video
+intro__flat.mp4            → normal 2D video on a screen
+forest__mono360_yaw30.mp4  → rotate front 30° (front was to the LEFT)
+forest__mono360_yaw-30.mp4 → rotate front -30° (front was to the RIGHT)
+whale__ou360_yaw-20.mp4    → 3D video + front rotated -20°
 01_intro.mp4, 02_next.mp4  → control play order (alphabetical)
 ```
 

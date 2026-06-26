@@ -6,7 +6,6 @@ using UnityEngine;
 using UnityEngine.Video;
 using UnityEngine.UI;
 using UnityEngine.XR;
-using System.Collections.Generic;
 
 // ===== DEBUG SCREEN COLOR LEGEND (what a solid-color screen means on the headset) =====
 //   BLACK   = trial expired (see expiryDateString) — app intentionally disabled.
@@ -31,8 +30,11 @@ public class KioskVideoPlayer : MonoBehaviour
     private RenderTexture videoRT;
     private GameObject sphere3DV;
     private GameObject sphereMono360;
+    private GameObject sphereOU360;
+    private GameObject sphereSBS360;
     private GameObject sphereEAC;        // YouTube Equi-Angular Cubemap (3x2 atlas) — genuine _eac files
     private GameObject sphereUpperDome;  // full-360 panorama packed into the top half (the misnamed _ytcubemap file)
+    private GameObject flatScreen;
     private GameObject activeSphere;
     private bool isIntroPlaying = false;
     private bool wasRestartPressed = false;
@@ -209,9 +211,8 @@ public class KioskVideoPlayer : MonoBehaviour
         // Create the two different screens for mixed video formats
         CreateVideoSpheres();
 
-        // Hide both spheres initially for the Intro
-        if (sphere3DV != null) sphere3DV.SetActive(false);
-        if (sphereMono360 != null) sphereMono360.SetActive(false);
+        // Hide all surfaces initially for the Intro
+        HideAllVideoSurfaces();
 
         // Set up video events
         videoPlayer.errorReceived += OnVideoError;
@@ -315,7 +316,25 @@ public class KioskVideoPlayer : MonoBehaviour
         AssignMaterial(sphereMono360);
         sphereMono360.SetActive(false);
 
-        // 3. YouTube EAC (Equi-Angular Cubemap) sphere. Same inward mesh, but the EAC shader samples by
+        // 3. True stereo over-under 360 sphere. The shader samples the correct half per eye.
+        sphereOU360 = new GameObject("VideoSphere_OU360");
+        sphereOU360.transform.position = Vector3.zero;
+        sphereOU360.transform.localScale = new Vector3(100f, 100f, 100f);
+        BuildEquirectSphere(sphereOU360, topHalfOnly: false);
+        AssignMaterial(sphereOU360, "Custom/VideoSphereStereo");
+        SetMaterialFloat(sphereOU360, "_Layout", 1f);
+        sphereOU360.SetActive(false);
+
+        // 4. True stereo side-by-side 360 sphere. The shader samples the correct half per eye.
+        sphereSBS360 = new GameObject("VideoSphere_SBS360");
+        sphereSBS360.transform.position = Vector3.zero;
+        sphereSBS360.transform.localScale = new Vector3(100f, 100f, 100f);
+        BuildEquirectSphere(sphereSBS360, topHalfOnly: false);
+        AssignMaterial(sphereSBS360, "Custom/VideoSphereStereo");
+        SetMaterialFloat(sphereSBS360, "_Layout", 2f);
+        sphereSBS360.SetActive(false);
+
+        // 5. YouTube EAC (Equi-Angular Cubemap) sphere. Same inward mesh, but the EAC shader samples by
         //    fragment DIRECTION (it ignores the baked equirect UVs) and unwraps YouTube's 3x2 cube atlas.
         sphereEAC = new GameObject("VideoSphere_EAC");
         sphereEAC.transform.position = Vector3.zero;
@@ -324,7 +343,7 @@ public class KioskVideoPlayer : MonoBehaviour
         AssignMaterial(sphereEAC, "Custom/VideoSphereEAC");
         sphereEAC.SetActive(false);
 
-        // 4. Upper-dome sphere for the misnamed "_ytcubemap" file: a full-360 panorama crammed into the
+        // 6. Upper-dome sphere for the misnamed "_ytcubemap" file: a full-360 panorama crammed into the
         //    TOP HALF of the frame (bottom half is dark void). Mapped horizon->zenith with NO vertical
         //    stretch (the cause of the "zoomed in" look on the over-under sphere); floor stays dark.
         sphereUpperDome = new GameObject("VideoSphere_UpperDome");
@@ -333,6 +352,13 @@ public class KioskVideoPlayer : MonoBehaviour
         BuildEquirectSphere(sphereUpperDome, SphereMapping.UpperDomeTopHalf);
         AssignMaterial(sphereUpperDome);
         sphereUpperDome.SetActive(false);
+
+        // 7. Regular flat video screen for non-360 clips.
+        flatScreen = new GameObject("VideoScreen_Flat");
+        flatScreen.transform.position = Vector3.zero;
+        BuildFlatScreen(flatScreen);
+        AssignMaterial(flatScreen);
+        flatScreen.SetActive(false);
     }
 
     // Builds an inward-facing equirectangular UV sphere on the given GameObject.
@@ -496,6 +522,84 @@ public class KioskVideoPlayer : MonoBehaviour
 
         go.AddComponent<MeshFilter>().mesh = mesh;
         go.AddComponent<MeshRenderer>();
+    }
+
+    void BuildFlatScreen(GameObject go)
+    {
+        // A 16:9 screen six meters in front of the rig origin. The parent object follows the camera
+        // position, while yaw rotation still uses the same _yaw token path as 360 content.
+        float distance = 6f;
+        float halfWidth = 3.2f;
+        float halfHeight = 1.8f;
+
+        Vector3[] vertices =
+        {
+            new Vector3(-halfWidth, -halfHeight, distance),
+            new Vector3( halfWidth, -halfHeight, distance),
+            new Vector3(-halfWidth,  halfHeight, distance),
+            new Vector3( halfWidth,  halfHeight, distance)
+        };
+
+        Vector2[] uv =
+        {
+            new Vector2(0f, 0f),
+            new Vector2(1f, 0f),
+            new Vector2(0f, 1f),
+            new Vector2(1f, 1f)
+        };
+
+        int[] triangles = { 0, 2, 1, 2, 3, 1 };
+
+        Mesh mesh = new Mesh();
+        mesh.name = "FlatVideoScreen";
+        mesh.vertices = vertices;
+        mesh.uv = uv;
+        mesh.triangles = triangles;
+        mesh.RecalculateNormals();
+        mesh.RecalculateBounds();
+
+        go.AddComponent<MeshFilter>().mesh = mesh;
+        go.AddComponent<MeshRenderer>();
+    }
+
+    void SetMaterialFloat(GameObject obj, string propertyName, float value)
+    {
+        var renderer = obj != null ? obj.GetComponent<Renderer>() : null;
+        if (renderer != null && renderer.material != null)
+        {
+            renderer.material.SetFloat(propertyName, value);
+        }
+    }
+
+    void HideAllVideoSurfaces()
+    {
+        if (sphere3DV != null) sphere3DV.SetActive(false);
+        if (sphereMono360 != null) sphereMono360.SetActive(false);
+        if (sphereOU360 != null) sphereOU360.SetActive(false);
+        if (sphereSBS360 != null) sphereSBS360.SetActive(false);
+        if (sphereEAC != null) sphereEAC.SetActive(false);
+        if (sphereUpperDome != null) sphereUpperDome.SetActive(false);
+        if (flatScreen != null) flatScreen.SetActive(false);
+    }
+
+    void BindTexture(GameObject obj, Texture texture)
+    {
+        var renderer = obj != null ? obj.GetComponent<Renderer>() : null;
+        if (renderer != null && renderer.material != null)
+        {
+            renderer.material.mainTexture = texture;
+        }
+    }
+
+    void BindTextureToAllSurfaces(Texture texture)
+    {
+        BindTexture(sphere3DV, texture);
+        BindTexture(sphereMono360, texture);
+        BindTexture(sphereOU360, texture);
+        BindTexture(sphereSBS360, texture);
+        BindTexture(sphereEAC, texture);
+        BindTexture(sphereUpperDome, texture);
+        BindTexture(flatScreen, texture);
     }
 
     void AssignMaterial(GameObject obj, string shaderName = "Custom/VideoSphereUnlit")
@@ -691,6 +795,16 @@ public class KioskVideoPlayer : MonoBehaviour
         return recenterYawOffset; // no token -> global default
     }
 
+    bool FileNameContains(string path, params string[] tokens)
+    {
+        string name = Path.GetFileNameWithoutExtension(path);
+        foreach (string token in tokens)
+        {
+            if (name.Contains(token, StringComparison.OrdinalIgnoreCase)) return true;
+        }
+        return false;
+    }
+
     void LoadPlaylist()
     {
         playlist.Clear();
@@ -735,41 +849,49 @@ public class KioskVideoPlayer : MonoBehaviour
         string videoUri = videoPath.StartsWith("file://") ? videoPath : "file://" + videoPath;
 
         // Hide all screens
-        if (sphere3DV != null) sphere3DV.SetActive(false);
-        if (sphereMono360 != null) sphereMono360.SetActive(false);
-        if (sphereEAC != null) sphereEAC.SetActive(false);
-        if (sphereUpperDome != null) sphereUpperDome.SetActive(false);
+        HideAllVideoSurfaces();
 
         // Determine which screen to use based on the filename tag.
         //
-        // IMPORTANT: the "_ytcubemap" file is MISNAMED. On-headset the frame holds the real 360
-        // panorama in the TOP half and a second, unwanted band in the BOTTOM half. Per the user's
-        // final decision, route it to the TOP-HALF sphere (sphere3DV): that samples only the top 50%
-        // of the texture and wraps it across the whole sphere, so the bottom band never shows and the
-        // upper content plays as full 360. Only a genuine "_eac" token uses the EAC cubemap shader.
-        if (videoPath.Contains("_eac", StringComparison.OrdinalIgnoreCase))
+        // Recommended tags:
+        //   __mono360  full-frame equirectangular 360 (default)
+        //   __ou360    stereo over-under / top-bottom 360
+        //   __sbs360   stereo side-by-side 360
+        //   __cubemap  YouTube EAC cubemap atlas
+        //   __flat     normal 2D video
+        //
+        // Older tags remain supported: _OU, _3dv, _eac, _ytcubemap, _ytcube.
+        if (FileNameContains(videoPath, "__flat", "_flat"))
+        {
+            activeSphere = flatScreen;
+        }
+        else if (FileNameContains(videoPath, "__cubemap", "_cubemap", "__eac", "_eac"))
         {
             // Genuine YouTube Equi-Angular Cubemap (3x2 atlas) — dedicated EAC sphere/shader.
             activeSphere = sphereEAC;
         }
-        else if (videoPath.Contains("_ytcubemap", StringComparison.OrdinalIgnoreCase) ||
-                 videoPath.Contains("_ytcube", StringComparison.OrdinalIgnoreCase))
+        else if (FileNameContains(videoPath, "__ytcubemap", "_ytcubemap", "__ytcube", "_ytcube"))
         {
             // MISNAMED file: real 360 panorama is in the TOP half of the 2:1 frame; the bottom half is
             // unwanted. The top-half sphere samples only the upper 50% and wraps it across the full
             // sphere, hiding the bottom band entirely — the layout the user asked to restore.
             activeSphere = sphere3DV;
         }
-        else if (videoPath.Contains("_3dv", StringComparison.OrdinalIgnoreCase) ||
-                 videoPath.Contains("_OU", StringComparison.OrdinalIgnoreCase))
+        else if (FileNameContains(videoPath, "__sbs360", "_sbs360", "__sbs", "_sbs", "_LR"))
         {
-            // Over-under stereo: the top-half sphere samples only the upper eye.
-            activeSphere = sphere3DV;
+            activeSphere = sphereSBS360;
+        }
+        else if (FileNameContains(videoPath, "__ou360", "_ou360", "__tb360", "_tb360", "_3dv", "_OU"))
+        {
+            activeSphere = sphereOU360;
         }
         else // Fallback for _mono360 and everything else
         {
             activeSphere = sphereMono360;
         }
+
+        Debug.Log("[KIOSK] Selected video surface = " + (activeSphere != null ? activeSphere.name : "none") +
+                  " for " + Path.GetFileName(videoPath));
 
         // Show the correct screen
         if (activeSphere != null) activeSphere.SetActive(true);
@@ -811,27 +933,7 @@ public class KioskVideoPlayer : MonoBehaviour
 
             videoPlayer.targetTexture = videoRT;
 
-            // Rebind the fresh texture onto both sphere materials.
-            if (sphere3DV != null)
-            {
-                var r = sphere3DV.GetComponent<Renderer>();
-                if (r != null && r.material != null) r.material.mainTexture = videoRT;
-            }
-            if (sphereMono360 != null)
-            {
-                var r = sphereMono360.GetComponent<Renderer>();
-                if (r != null && r.material != null) r.material.mainTexture = videoRT;
-            }
-            if (sphereEAC != null)
-            {
-                var r = sphereEAC.GetComponent<Renderer>();
-                if (r != null && r.material != null) r.material.mainTexture = videoRT;
-            }
-            if (sphereUpperDome != null)
-            {
-                var r = sphereUpperDome.GetComponent<Renderer>();
-                if (r != null && r.material != null) r.material.mainTexture = videoRT;
-            }
+            BindTextureToAllSurfaces(videoRT);
         }
 
         vp.Play();
@@ -861,10 +963,7 @@ public class KioskVideoPlayer : MonoBehaviour
             Camera.main.clearFlags = CameraClearFlags.SolidColor;
             Camera.main.backgroundColor = color;
         }
-        if (sphere3DV != null) sphere3DV.SetActive(false);
-        if (sphereMono360 != null) sphereMono360.SetActive(false);
-        if (sphereEAC != null) sphereEAC.SetActive(false);
-        if (sphereUpperDome != null) sphereUpperDome.SetActive(false);
+        HideAllVideoSurfaces();
     }
 
 
@@ -931,10 +1030,7 @@ public class KioskVideoPlayer : MonoBehaviour
 
         if (videoPlayer != null) videoPlayer.Stop();
 
-        if (sphere3DV != null) sphere3DV.SetActive(false);
-        if (sphereMono360 != null) sphereMono360.SetActive(false);
-        if (sphereEAC != null) sphereEAC.SetActive(false);
-        if (sphereUpperDome != null) sphereUpperDome.SetActive(false);
+        HideAllVideoSurfaces();
 
         // Reset to the very first video
         currentVideoIndex = 0;
@@ -958,8 +1054,11 @@ public class KioskVideoPlayer : MonoBehaviour
             // This prevents positional warping/shaking if the user moves their body.
             if (sphere3DV != null) sphere3DV.transform.position = Camera.main.transform.position;
             if (sphereMono360 != null) sphereMono360.transform.position = Camera.main.transform.position;
+            if (sphereOU360 != null) sphereOU360.transform.position = Camera.main.transform.position;
+            if (sphereSBS360 != null) sphereSBS360.transform.position = Camera.main.transform.position;
             if (sphereEAC != null) sphereEAC.transform.position = Camera.main.transform.position;
             if (sphereUpperDome != null) sphereUpperDome.transform.position = Camera.main.transform.position;
+            if (flatScreen != null) flatScreen.transform.position = Camera.main.transform.position;
         }
     }// Auto-resume when headset is put back on (no controller needed)
     void OnApplicationFocus(bool hasFocus)
