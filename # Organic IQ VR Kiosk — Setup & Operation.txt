@@ -256,7 +256,8 @@ The app is **fully automatic**:
 
 - **Launch it once** from the headset's App Library (Unknown Sources filter).
 - It plays an intro, then plays every video in the folder **back-to-back, looping forever**.
-- When a visitor **takes the headset off and the next person puts it on**, it keeps running — no need to touch anything.
+- When a visitor **takes the headset off**, Quest uses its normal screen sleep behavior.
+- If the screen turns off/app pauses, the next resume restarts the kiosk from the beginning.
 
 **Power tips for an all-day booth:**
 - Keep the headset **plugged into power** during the event (a USB-C cable to a power bank or wall adapter).

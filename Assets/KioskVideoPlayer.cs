@@ -45,6 +45,12 @@ public class KioskVideoPlayer : MonoBehaviour
     public float restartHoldSeconds = 5f;
     private float restartHeldTime = 0f;
 
+    [Header("Headset Removal")]
+    [Tooltip("When true, the app lets Quest use its default sleep behavior as soon as the headset is removed.")]
+    public bool allowSystemSleepWhenHeadsetRemoved = true;
+    private bool wasHeadsetWorn = true;
+    private bool restartFromBeginningOnNextResume = false;
+
     [Header("Recenter Settings")]
     [Tooltip("DEFAULT world yaw (degrees) the video's native front is locked to, VLC-style — independent of head direction. Used when a video filename has no _yaw token. 0 = front faces world-forward. Per-video override: add _yaw<number> to the filename, e.g. moon_yaw30.mp4 (rotate 30° right-to-front) or forest_yaw-25.mp4.")]
     public float recenterYawOffset = 0f;
@@ -218,7 +224,8 @@ public class KioskVideoPlayer : MonoBehaviour
         videoPlayer.errorReceived += OnVideoError;
         videoPlayer.loopPointReached += OnVideoFinished;
 
-        // Keep screen always on (prevents Quest from sleeping during kiosk playback)
+        // Keep screen awake while the headset is being worn. When removed, CheckHeadsetPresence()
+        // restores the system sleep behavior so Quest can turn off normally.
         Screen.sleepTimeout = SleepTimeout.NeverSleep;
 
         // Start the permission and initialization sequence
@@ -979,7 +986,44 @@ public class KioskVideoPlayer : MonoBehaviour
         if (isExpired) return; // Do nothing if the trial has expired
 
         SmoothHeadTracking();
+        CheckHeadsetPresence();
         CheckRestartInput();
+    }
+
+    void CheckHeadsetPresence()
+    {
+        bool isWorn = IsHeadsetWorn();
+
+        if (!isWorn)
+        {
+            if (allowSystemSleepWhenHeadsetRemoved)
+            {
+                Screen.sleepTimeout = SleepTimeout.SystemSetting;
+            }
+        }
+        else if (!wasHeadsetWorn)
+        {
+            Screen.sleepTimeout = SleepTimeout.NeverSleep;
+
+            if (videoPlayer != null && playlist.Count > 0 && !isIntroPlaying)
+            {
+                StartCoroutine(ResumeOrRestartAfterHeadsetReturn());
+            }
+        }
+
+        wasHeadsetWorn = isWorn;
+    }
+
+    bool IsHeadsetWorn()
+    {
+        var hmd = UnityEngine.XR.InputDevices.GetDeviceAtXRNode(UnityEngine.XR.XRNode.Head);
+        if (hmd.isValid &&
+            hmd.TryGetFeatureValue(UnityEngine.XR.CommonUsages.userPresence, out bool userPresent))
+        {
+            return userPresent;
+        }
+
+        return true;
     }
 
     void CheckRestartInput()
@@ -1063,27 +1107,57 @@ public class KioskVideoPlayer : MonoBehaviour
     }// Auto-resume when headset is put back on (no controller needed)
     void OnApplicationFocus(bool hasFocus)
     {
-        if (hasFocus && videoPlayer != null && playlist.Count > 0 && !isIntroPlaying)
+        if (!hasFocus)
         {
-            if (!videoPlayer.isPlaying)
-                videoPlayer.Play();
+            Screen.sleepTimeout = SleepTimeout.SystemSetting;
+            return;
+        }
+
+        if (videoPlayer != null && playlist.Count > 0 && !isIntroPlaying)
+        {
+            StartCoroutine(ResumeOrRestartAfterHeadsetReturn());
         }
     }
 
     void OnApplicationPause(bool pauseStatus)
     {
-        if (!pauseStatus && videoPlayer != null && playlist.Count > 0 && !isIntroPlaying)
+        if (pauseStatus)
+        {
+            MarkAppInactiveForRestart();
+            return;
+        }
+
+        if (videoPlayer != null && playlist.Count > 0 && !isIntroPlaying)
         {
             // Headset was put back on — auto resume immediately
-            StartCoroutine(AutoResumeAfterPause());
+            StartCoroutine(ResumeOrRestartAfterHeadsetReturn());
         }
     }
 
-    IEnumerator AutoResumeAfterPause()
+    void MarkAppInactiveForRestart()
     {
-        // Wait a tiny moment for the system to settle, then force resume
+        restartFromBeginningOnNextResume = true;
+        Screen.sleepTimeout = SleepTimeout.SystemSetting;
+        Debug.Log("[KIOSK] App paused/lost focus; next resume will restart the kiosk.");
+    }
+
+    IEnumerator ResumeOrRestartAfterHeadsetReturn()
+    {
         yield return new WaitForSeconds(0.5f);
-        if (videoPlayer != null && !videoPlayer.isPlaying && playlist.Count > 0 && !isIntroPlaying)
+
+        if (videoPlayer == null || playlist.Count == 0 || isIntroPlaying || isExpired) yield break;
+
+        Screen.sleepTimeout = SleepTimeout.NeverSleep;
+
+        if (restartFromBeginningOnNextResume)
+        {
+            restartFromBeginningOnNextResume = false;
+            Debug.Log("[KIOSK] Restarting kiosk after app resumed from inactive state.");
+            RestartKiosk();
+            yield break;
+        }
+
+        if (!videoPlayer.isPlaying)
         {
             RecenterVideoSphere();
             videoPlayer.Play();
