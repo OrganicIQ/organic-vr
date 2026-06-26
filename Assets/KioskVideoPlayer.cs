@@ -12,7 +12,7 @@ using System.Collections.Generic;
 //   BLACK   = trial expired (see expiryDateString) — app intentionally disabled.
 //   YELLOW  = video folder UNREACHABLE. Almost always missing All-Files-Access permission on Quest,
 //             or the folder path is wrong. Grant All Files Access, then verify the path.
-//   MAGENTA = folder reachable, but NO playable videos (.mp4/.mp/.mov/.mkv) found inside it.
+//   MAGENTA = folder reachable, but NO playable videos (.mp4/.mp/.mov/.mkv/.webm) found inside it.
 //             Check that your videos are actually in /storage/emulated/0/GeniMindsXR.
 //   CYAN    = an exception was thrown while reading the folder (e.g. access denied mid-read).
 //   BLUE    = the VideoPlayer reported a playback error on a specific file (codec/corrupt file).
@@ -31,6 +31,8 @@ public class KioskVideoPlayer : MonoBehaviour
     private RenderTexture videoRT;
     private GameObject sphere3DV;
     private GameObject sphereMono360;
+    private GameObject sphereEAC;        // YouTube Equi-Angular Cubemap (3x2 atlas) — genuine _eac files
+    private GameObject sphereUpperDome;  // full-360 panorama packed into the top half (the misnamed _ytcubemap file)
     private GameObject activeSphere;
     private bool isIntroPlaying = false;
     private bool wasRestartPressed = false;
@@ -194,14 +196,15 @@ public class KioskVideoPlayer : MonoBehaviour
 
         videoPlayer = GetComponent<VideoPlayer>();
 
-        // Create a RenderTexture for the video
-        videoRT = new RenderTexture(3840, 2160, 0);
-        videoRT.Create();
-
-        // Configure VideoPlayer to render into our RenderTexture
+        // NOTE: we no longer allocate a fixed-size RenderTexture here. A hardcoded 3840x2160 (16:9)
+        // target squashed true 2:1 equirect videos (e.g. 4096x2048) — the top/bottom (pole) rows fell
+        // outside the 16:9 frame and sampled black, which is what produced the cap-sized BLACK HOLE on
+        // those files (while a 16:9 mp4 matched the target and looked fine). Instead we now size the
+        // RenderTexture to each video's ACTUAL width/height after Prepare() reports them, in
+        // OnVideoPrepared(). This preserves the native equirect aspect for any resolution.
         videoPlayer.renderMode = VideoRenderMode.RenderTexture;
-        videoPlayer.targetTexture = videoRT;
         videoPlayer.isLooping = false; // We handle looping ourselves for playlist support
+        videoPlayer.prepareCompleted += OnVideoPrepared;
 
         // Create the two different screens for mixed video formats
         CreateVideoSpheres();
@@ -311,22 +314,71 @@ public class KioskVideoPlayer : MonoBehaviour
         BuildEquirectSphere(sphereMono360, topHalfOnly: false);
         AssignMaterial(sphereMono360);
         sphereMono360.SetActive(false);
+
+        // 3. YouTube EAC (Equi-Angular Cubemap) sphere. Same inward mesh, but the EAC shader samples by
+        //    fragment DIRECTION (it ignores the baked equirect UVs) and unwraps YouTube's 3x2 cube atlas.
+        sphereEAC = new GameObject("VideoSphere_EAC");
+        sphereEAC.transform.position = Vector3.zero;
+        sphereEAC.transform.localScale = new Vector3(100f, 100f, 100f);
+        BuildEquirectSphere(sphereEAC, topHalfOnly: false);
+        AssignMaterial(sphereEAC, "Custom/VideoSphereEAC");
+        sphereEAC.SetActive(false);
+
+        // 4. Upper-dome sphere for the misnamed "_ytcubemap" file: a full-360 panorama crammed into the
+        //    TOP HALF of the frame (bottom half is dark void). Mapped horizon->zenith with NO vertical
+        //    stretch (the cause of the "zoomed in" look on the over-under sphere); floor stays dark.
+        sphereUpperDome = new GameObject("VideoSphere_UpperDome");
+        sphereUpperDome.transform.position = Vector3.zero;
+        sphereUpperDome.transform.localScale = new Vector3(100f, 100f, 100f);
+        BuildEquirectSphere(sphereUpperDome, SphereMapping.UpperDomeTopHalf);
+        AssignMaterial(sphereUpperDome);
+        sphereUpperDome.SetActive(false);
     }
 
     // Builds an inward-facing equirectangular UV sphere on the given GameObject.
     // Longitude maps to U (0..1 across 360 deg), latitude maps to V (0..1 bottom..top).
     // topHalfOnly remaps V into 0.5..1.0 for over/under (3D) videos so only the top half is sampled.
+    // How the equirect texture maps onto the sphere's latitude (vertical) axis.
+    enum SphereMapping
+    {
+        Full,             // whole texture across the whole sphere (standard mono 360)
+        OverUnderTopHalf, // top 50% of texture = one eye, mapped across the whole sphere (over-under 3D)
+        UpperDomeTopHalf  // top 50% of texture is a FULL-360 panorama covering only the UPPER hemisphere;
+                          // map it horizon->zenith un-stretched, clamp the lower hemisphere to the dark edge.
+    }
+
+    // Back-compat overload (bool). false = Full, true = OverUnderTopHalf.
     void BuildEquirectSphere(GameObject go, bool topHalfOnly)
     {
+        BuildEquirectSphere(go, topHalfOnly ? SphereMapping.OverUnderTopHalf : SphereMapping.Full);
+    }
+
+    void BuildEquirectSphere(GameObject go, SphereMapping mapping)
+    {
+        bool topHalfOnly = (mapping == SphereMapping.OverUnderTopHalf);
         const int longitudeSegments = 64; // around (horizontal)
         const int latitudeSegments = 32;  // top-to-bottom (vertical)
 
-        int vertCount = (longitudeSegments + 1) * (latitudeSegments + 1);
+        // We build the sphere as: a grid of the INTERIOR latitude rings (lat = 1..latitudeSegments-1),
+        // plus ONE dedicated apex vertex at each pole connected to the nearest ring by a triangle FAN.
+        // The old code emitted degenerate (zero-area) triangles at the two pole rings because every
+        // vertex of those rings sat at the same world point — those degenerate triangles rendered as
+        // nothing, which is what produced the BLACK HOLE when looking straight up or down. A proper
+        // pole apex + fan makes the poles watertight and fully textured.
+
+        int interiorRings = latitudeSegments - 1;                 // rings at lat = 1 .. latitudeSegments-1
+        int ringStride = longitudeSegments + 1;                   // verts per ring (last duplicates first for UV seam)
+        int gridVertCount = interiorRings * ringStride;
+        int topApexIndex = gridVertCount;                         // apex vertices appended after the grid
+        int bottomApexIndex = gridVertCount + 1;
+        int vertCount = gridVertCount + 2;
+
         Vector3[] vertices = new Vector3[vertCount];
         Vector2[] uv = new Vector2[vertCount];
         int v = 0;
 
-        for (int lat = 0; lat <= latitudeSegments; lat++)
+        // --- Interior grid rings (skip the degenerate pole rings lat=0 and lat=latitudeSegments) ---
+        for (int lat = 1; lat <= latitudeSegments - 1; lat++)
         {
             // theta: 0 at top pole -> PI at bottom pole
             float theta = Mathf.PI * lat / latitudeSegments;
@@ -335,8 +387,18 @@ public class KioskVideoPlayer : MonoBehaviour
 
             for (int lon = 0; lon <= longitudeSegments; lon++)
             {
-                // phi: 0..2PI around. Front of the video (longitude 0) faces +Z.
-                float phi = 2f * Mathf.PI * lon / longitudeSegments;
+                // SEAM-SAFE UV: u runs cleanly 0 -> 1 across the ring with NO wrap-around. The previous
+                // code added a +0.5 phase to u and then did `if (u > 1) u -= 1`, which made the seam
+                // triangle interpolate u from ~0.999 back to 0.0 — squashing the ENTIRE texture into one
+                // sliver and producing the broad smeared "cylindrical line" at the back. The extra
+                // (longitudeSegments+1)th vertex is a 3D duplicate of the first, and its u MUST stay at
+                // 1.0 (not snap to 0.0) so the wrap edge samples texel 1.0 meeting texel 0.0 seamlessly.
+                float u = (float)lon / longitudeSegments; // 0..1, no wrap
+
+                // The "front faces +Z" framing that the +0.5 u-phase used to provide is now done in the
+                // GEOMETRY instead: shift phi by PI so texture u=0.5 (the video's native front) lands on
+                // +Z. This keeps recenterYawOffset semantics identical while leaving the UVs seam-clean.
+                float phi = 2f * Mathf.PI * lon / longitudeSegments + Mathf.PI;
                 float sinPhi = Mathf.Sin(phi);
                 float cosPhi = Mathf.Cos(phi);
 
@@ -344,30 +406,53 @@ public class KioskVideoPlayer : MonoBehaviour
                 Vector3 pos = new Vector3(sinTheta * sinPhi, cosTheta, sinTheta * cosPhi);
                 vertices[v] = pos;
 
-                // Equirect UVs. U INCREASES with lon (matching the surface sweeping to the viewer's
-                // right), so text is NOT mirrored when viewed from inside the sphere. The +0.5 phase
-                // shift makes the CENTER of the video (texture u=0.5 = the scene's native front) land on
-                // the forward vertex (+Z), so a recenterYawOffset of 0 points the front straight ahead.
-                float u = 0.5f + (float)lon / longitudeSegments;
-                if (u > 1f) u -= 1f; // wrap into [0,1]
                 float vv = 1f - (float)lat / latitudeSegments; // top of texture at top of sphere
                 if (topHalfOnly) vv = 0.5f + vv * 0.5f;          // sample only the top half (left eye)
+                if (mapping == SphereMapping.UpperDomeTopHalf)
+                {
+                    // The real picture lives in the top 50% of the frame and is a full-360 panorama that
+                    // only covers the UPPER hemisphere. Map zenith (theta=0) -> texture top (V=1.0) and
+                    // horizon (theta=PI/2) -> the panorama's bottom edge (V=0.5). Below the horizon there
+                    // is no data, so clamp to V=0.5 (the dark edge) instead of stretching the picture down.
+                    // domeT: 1 at zenith -> 0 at horizon, then 0 across the whole lower hemisphere.
+                    float domeT = Mathf.Clamp01(cosTheta); // cosTheta = 1 up, 0 at horizon, negative below
+                    vv = 0.5f + 0.5f * domeT;
+                }
                 uv[v] = new Vector2(u, vv);
 
                 v++;
             }
         }
 
+        // --- Pole apex vertices. UV pinned to the texture's vertical center column (u=0.5) so the
+        //     pinch point sits at the middle of the top/bottom edge of the equirect frame. ---
+        float topVV = 1f;    // top edge of texture
+        float bottomVV = 0f; // bottom edge of texture
+        if (topHalfOnly) { topVV = 0.5f + topVV * 0.5f; bottomVV = 0.5f + bottomVV * 0.5f; }
+        if (mapping == SphereMapping.UpperDomeTopHalf)
+        {
+            topVV = 1f;     // zenith = top of the panorama
+            bottomVV = 0.5f; // nadir clamps to the panorama's dark bottom edge
+        }
+        vertices[topApexIndex] = new Vector3(0f, 1f, 0f);
+        uv[topApexIndex] = new Vector2(0.5f, topVV);
+        vertices[bottomApexIndex] = new Vector3(0f, -1f, 0f);
+        uv[bottomApexIndex] = new Vector2(0.5f, bottomVV);
+
         // Triangles wound so the faces point INWARD (we sit inside the sphere).
-        int[] triangles = new int[longitudeSegments * latitudeSegments * 6];
+        // Counts: grid quad bands = (interiorRings - 1) bands * longitudeSegments * 6,
+        //         plus a top fan and a bottom fan of longitudeSegments * 3 each.
+        int gridBands = interiorRings - 1;
+        int[] triangles = new int[gridBands * longitudeSegments * 6 + longitudeSegments * 3 * 2];
         int t = 0;
-        int stride = longitudeSegments + 1;
-        for (int lat = 0; lat < latitudeSegments; lat++)
+
+        // Grid quad bands between adjacent interior rings.
+        for (int ring = 0; ring < gridBands; ring++)
         {
             for (int lon = 0; lon < longitudeSegments; lon++)
             {
-                int current = lat * stride + lon;
-                int next = current + stride;
+                int current = ring * ringStride + lon;
+                int next = current + ringStride;
 
                 // Inward winding (reverse of the usual outward order).
                 triangles[t++] = current;
@@ -378,6 +463,26 @@ public class KioskVideoPlayer : MonoBehaviour
                 triangles[t++] = next + 1;
                 triangles[t++] = next;
             }
+        }
+
+        // Top fan: connect the apex to the FIRST interior ring (ring index 0, nearest the top pole).
+        // Winding matches the inward-facing grid above.
+        for (int lon = 0; lon < longitudeSegments; lon++)
+        {
+            int ringVert = lon;            // first ring starts at vertex 0
+            triangles[t++] = topApexIndex;
+            triangles[t++] = ringVert;
+            triangles[t++] = ringVert + 1;
+        }
+
+        // Bottom fan: connect the apex to the LAST interior ring (nearest the bottom pole).
+        int lastRingStart = (interiorRings - 1) * ringStride;
+        for (int lon = 0; lon < longitudeSegments; lon++)
+        {
+            int ringVert = lastRingStart + lon;
+            triangles[t++] = bottomApexIndex;
+            triangles[t++] = ringVert + 1;
+            triangles[t++] = ringVert;
         }
 
         Mesh mesh = new Mesh();
@@ -393,10 +498,10 @@ public class KioskVideoPlayer : MonoBehaviour
         go.AddComponent<MeshRenderer>();
     }
 
-    void AssignMaterial(GameObject obj)
+    void AssignMaterial(GameObject obj, string shaderName = "Custom/VideoSphereUnlit")
     {
-        // Use our custom URP-compatible shader
-        Shader customShader = Shader.Find("Custom/VideoSphereUnlit");
+        // Use the requested custom URP-compatible shader (equirect unlit by default; EAC for cubemaps).
+        Shader customShader = Shader.Find(shaderName);
         if (customShader != null)
         {
             Material videoMat = new Material(customShader);
@@ -599,7 +704,8 @@ public class KioskVideoPlayer : MonoBehaviour
                 if (file.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase) ||
                     file.EndsWith(".mp", StringComparison.OrdinalIgnoreCase) ||
                     file.EndsWith(".mov", StringComparison.OrdinalIgnoreCase) ||
-                    file.EndsWith(".mkv", StringComparison.OrdinalIgnoreCase))
+                    file.EndsWith(".mkv", StringComparison.OrdinalIgnoreCase) ||
+                    file.EndsWith(".webm", StringComparison.OrdinalIgnoreCase))
                 {
                     playlist.Add(file);
                 }
@@ -631,12 +737,33 @@ public class KioskVideoPlayer : MonoBehaviour
         // Hide all screens
         if (sphere3DV != null) sphere3DV.SetActive(false);
         if (sphereMono360 != null) sphereMono360.SetActive(false);
+        if (sphereEAC != null) sphereEAC.SetActive(false);
+        if (sphereUpperDome != null) sphereUpperDome.SetActive(false);
 
-        // Determine which screen to use based on the filename tag
-        if (videoPath.Contains("_3dv", StringComparison.OrdinalIgnoreCase) || 
-            videoPath.Contains("_OU", StringComparison.OrdinalIgnoreCase) ||
-            videoPath.Contains("_ytcubemap", StringComparison.OrdinalIgnoreCase))
+        // Determine which screen to use based on the filename tag.
+        //
+        // IMPORTANT: the "_ytcubemap" file is MISNAMED. On-headset the frame holds the real 360
+        // panorama in the TOP half and a second, unwanted band in the BOTTOM half. Per the user's
+        // final decision, route it to the TOP-HALF sphere (sphere3DV): that samples only the top 50%
+        // of the texture and wraps it across the whole sphere, so the bottom band never shows and the
+        // upper content plays as full 360. Only a genuine "_eac" token uses the EAC cubemap shader.
+        if (videoPath.Contains("_eac", StringComparison.OrdinalIgnoreCase))
         {
+            // Genuine YouTube Equi-Angular Cubemap (3x2 atlas) — dedicated EAC sphere/shader.
+            activeSphere = sphereEAC;
+        }
+        else if (videoPath.Contains("_ytcubemap", StringComparison.OrdinalIgnoreCase) ||
+                 videoPath.Contains("_ytcube", StringComparison.OrdinalIgnoreCase))
+        {
+            // MISNAMED file: real 360 panorama is in the TOP half of the 2:1 frame; the bottom half is
+            // unwanted. The top-half sphere samples only the upper 50% and wraps it across the full
+            // sphere, hiding the bottom band entirely — the layout the user asked to restore.
+            activeSphere = sphere3DV;
+        }
+        else if (videoPath.Contains("_3dv", StringComparison.OrdinalIgnoreCase) ||
+                 videoPath.Contains("_OU", StringComparison.OrdinalIgnoreCase))
+        {
+            // Over-under stereo: the top-half sphere samples only the upper eye.
             activeSphere = sphere3DV;
         }
         else // Fallback for _mono360 and everything else
@@ -657,8 +784,57 @@ public class KioskVideoPlayer : MonoBehaviour
         RecenterVideoSphere();
         StartCoroutine(RecenterNextFrame());
 
+        // Prepare (not Play) first: once prepared, OnVideoPrepared sizes the RenderTexture to the
+        // video's real dimensions, binds it to the active sphere, then starts playback. This is what
+        // keeps a 2:1 equirect from being squashed into a 16:9 target (the black-hole-at-poles bug).
         videoPlayer.url = videoUri;
-        videoPlayer.Play();
+        videoPlayer.Prepare();
+    }
+
+    // Called once the VideoPlayer knows the real frame size. (Re)allocates videoRT to match the video's
+    // native resolution so equirect poles aren't clipped, rebinds it to the sphere materials, then plays.
+    void OnVideoPrepared(VideoPlayer vp)
+    {
+        int w = (int)vp.width;
+        int h = (int)vp.height;
+        if (w <= 0 || h <= 0) { w = 4096; h = 2048; } // safety fallback for a 2:1 equirect
+
+        // Recreate the RenderTexture only when the size actually changes (avoids per-loop churn).
+        if (videoRT == null || videoRT.width != w || videoRT.height != h)
+        {
+            if (videoRT != null) { videoRT.Release(); }
+            videoRT = new RenderTexture(w, h, 0);
+            // Repeat (not the default Clamp) so the equirect seam at u=1.0 blends into u=0.0 instead of
+            // clamping to the edge texel — removes the faint hairline at the back of the 360 sphere.
+            videoRT.wrapMode = TextureWrapMode.Repeat;
+            videoRT.Create();
+
+            videoPlayer.targetTexture = videoRT;
+
+            // Rebind the fresh texture onto both sphere materials.
+            if (sphere3DV != null)
+            {
+                var r = sphere3DV.GetComponent<Renderer>();
+                if (r != null && r.material != null) r.material.mainTexture = videoRT;
+            }
+            if (sphereMono360 != null)
+            {
+                var r = sphereMono360.GetComponent<Renderer>();
+                if (r != null && r.material != null) r.material.mainTexture = videoRT;
+            }
+            if (sphereEAC != null)
+            {
+                var r = sphereEAC.GetComponent<Renderer>();
+                if (r != null && r.material != null) r.material.mainTexture = videoRT;
+            }
+            if (sphereUpperDome != null)
+            {
+                var r = sphereUpperDome.GetComponent<Renderer>();
+                if (r != null && r.material != null) r.material.mainTexture = videoRT;
+            }
+        }
+
+        vp.Play();
     }
 
     IEnumerator RecenterNextFrame()
@@ -687,6 +863,8 @@ public class KioskVideoPlayer : MonoBehaviour
         }
         if (sphere3DV != null) sphere3DV.SetActive(false);
         if (sphereMono360 != null) sphereMono360.SetActive(false);
+        if (sphereEAC != null) sphereEAC.SetActive(false);
+        if (sphereUpperDome != null) sphereUpperDome.SetActive(false);
     }
 
 
@@ -694,6 +872,7 @@ public class KioskVideoPlayer : MonoBehaviour
     void OnDestroy()
     {
         Application.onBeforeRender -= SmoothHeadTracking;
+        if (videoPlayer != null) videoPlayer.prepareCompleted -= OnVideoPrepared;
     }
 
     void Update()
@@ -751,9 +930,11 @@ public class KioskVideoPlayer : MonoBehaviour
         if (isIntroPlaying) return; // Prevent restarting if the intro is already playing
 
         if (videoPlayer != null) videoPlayer.Stop();
-        
+
         if (sphere3DV != null) sphere3DV.SetActive(false);
         if (sphereMono360 != null) sphereMono360.SetActive(false);
+        if (sphereEAC != null) sphereEAC.SetActive(false);
+        if (sphereUpperDome != null) sphereUpperDome.SetActive(false);
 
         // Reset to the very first video
         currentVideoIndex = 0;
@@ -777,6 +958,8 @@ public class KioskVideoPlayer : MonoBehaviour
             // This prevents positional warping/shaking if the user moves their body.
             if (sphere3DV != null) sphere3DV.transform.position = Camera.main.transform.position;
             if (sphereMono360 != null) sphereMono360.transform.position = Camera.main.transform.position;
+            if (sphereEAC != null) sphereEAC.transform.position = Camera.main.transform.position;
+            if (sphereUpperDome != null) sphereUpperDome.transform.position = Camera.main.transform.position;
         }
     }// Auto-resume when headset is put back on (no controller needed)
     void OnApplicationFocus(bool hasFocus)

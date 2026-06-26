@@ -11,7 +11,18 @@
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
                      tools:ignore="ScopedStorage" />
 
+    <!-- Hand-tracking support declared as OPTIONAL (required="false"). This is the key to letting the
+         kiosk LAUNCH with no controller: by declaring hand support and marking neither hands nor
+         controller as mandatory, Quest hands focus to the app the moment the headset goes on, instead
+         of waiting for a controller to be powered/paired. The app itself needs no input to run. -->
+    <uses-feature android:name="oculus.software.handtracking" android:required="false" />
+    <uses-permission android:name="com.oculus.permission.HAND_TRACKING" />
+
     <application>
+        <!-- Hand-tracking meta-data (must live inside <application>). Pairs with the optional
+             handtracking <uses-feature> above to let the kiosk launch without a controller. -->
+        <meta-data android:name="com.oculus.handtracking.frequency" android:value="HIGH" />
+        <meta-data android:name="com.oculus.handtracking.version" android:value="V2.0" />
         <!-- Focus-aware so the app keeps running while system overlays/popups appear. -->
         <meta-data android:name="com.oculus.vr.focusaware" android:value="true" />
         <!-- Application Entry is set to GameActivity, so we keep ONLY the GameActivity block.
