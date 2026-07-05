@@ -8,7 +8,7 @@ using UnityEngine.UI;
 using UnityEngine.XR;
 
 // ===== DEBUG SCREEN COLOR LEGEND (what a solid-color screen means on the headset) =====
-//   BLACK   = trial expired (see expiryDateString) — app intentionally disabled.
+//   BLACK   = reserved for fatal startup lock states.
 //   YELLOW  = video folder UNREACHABLE. Almost always missing All-Files-Access permission on Quest,
 //             or the folder path is wrong. Grant All Files Access, then verify the path.
 //   MAGENTA = folder reachable, but NO playable videos (.mp4/.mp/.mov/.mkv/.webm) found inside it.
@@ -62,9 +62,9 @@ public class KioskVideoPlayer : MonoBehaviour
 
     [Header("Trial Version Settings")]
     [Tooltip("If true, the app will stop working after the expiry date.")]
-    public bool enableExpiryDate = true;
+    public bool enableExpiryDate = false;
     [Tooltip("The date the app stops working (YYYY-MM-DD)")]
-    public string expiryDateString = "2026-06-30"; // Default: June 30, 2026
+    public string expiryDateString = "";
 
     // ---- Anti-rollback hard lock ----------------------------------------------------------
     // The plain expiry check above can be defeated by setting the headset's clock back to before

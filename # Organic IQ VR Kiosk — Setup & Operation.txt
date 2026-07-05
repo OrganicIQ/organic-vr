@@ -286,7 +286,7 @@ If the headset shows a **solid colour** instead of video, it's telling you what'
 | 🟣 **Magenta / Purple** | Folder is fine, but **no playable videos** inside | Check videos are actually in the folder ([Step 7](#7-add-your-videos)) and use a supported extension. |
 | 🔵 **Cyan** | Error reading the folder | Re-grant permission ([Step 6](#6-grant-storage-permission-required-once)); reconnect and check the folder. |
 | 🔵 **Blue** | A specific video file failed to play | That file is corrupt or an unsupported codec. Re-export it as standard **H.264 MP4** and replace it. |
-| ⚫ **Black** | Trial period expired | Contact Organic IQ for an updated build. |
+| ⚫ **Black** | Fatal startup lock/state | Restart the app; if it stays black, rebuild/reinstall the latest APK. |
 
 **Other common issues:**
 
